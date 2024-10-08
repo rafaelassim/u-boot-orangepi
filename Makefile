@@ -7,6 +7,7 @@ PATCHLEVEL = 09
 SUBLEVEL =
 EXTRAVERSION =
 NAME =
+CFLAGS += -Werror
 
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
