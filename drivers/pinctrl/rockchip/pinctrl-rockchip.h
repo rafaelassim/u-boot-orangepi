@@ -6,7 +6,7 @@
 #ifndef __DRIVERS_PINCTRL_ROCKCHIP_H
 #define __DRIVERS_PINCTRL_ROCKCHIP_H
 
-#include <dt-bindings/pinctrl/rockchip.h>
+#include <linux/bitops.h>
 #include <linux/types.h>
 
 #define RK_GPIO0_A0	0
@@ -186,8 +186,7 @@
 #define IOMUX_UNROUTED		BIT(3)
 #define IOMUX_WIDTH_3BIT	BIT(4)
 #define IOMUX_8WIDTH_2BIT	BIT(5)
-#define IOMUX_WRITABLE_32BIT	BIT(6)
-#define IOMUX_L_SOURCE_PMU	BIT(7)
+#define IOMUX_L_SOURCE_PMU	BIT(6)
 
 /**
  * Defined some common pins constants
@@ -211,9 +210,6 @@ struct rockchip_iomux {
 	int				offset;
 };
 
-#define DRV_TYPE_IO_MASK		GENMASK(31, 16)
-#define DRV_TYPE_WRITABLE_32BIT		BIT(31)
-
 /**
  * enum type index corresponding to rockchip_perpin_drv_list arrays index.
  */
@@ -226,9 +222,6 @@ enum rockchip_pin_drv_type {
 	DRV_TYPE_MAX
 };
 
-#define PULL_TYPE_IO_MASK		GENMASK(31, 16)
-#define PULL_TYPE_WRITABLE_32BIT	BIT(31)
-
 /**
  * enum type index corresponding to rockchip_pull_list arrays index.
  */
@@ -239,18 +232,19 @@ enum rockchip_pin_pull_type {
 };
 
 /**
- * enum mux route register type, should be invalid/default/topgrf/pmugrf.
- * INVALID: means do not need to set mux route
- * DEFAULT: means same regmap as pin iomux
- * TOPGRF: means mux route setting in topgrf
- * PMUGRF: means mux route setting in pmugrf
+ * Rockchip pinctrl route type
+ *
+ * DEFAULT	: Same regmap as pin iomux
+ * TOPGRF	: Mux route setting in topgrf
+ * PMUGRF	: Mux route setting in pmugrf
+ * INVALID	: Nnot need to set mux route
  */
 enum rockchip_pin_route_type {
-	ROUTE_TYPE_DEFAULT = 0,
-	ROUTE_TYPE_TOPGRF = 1,
-	ROUTE_TYPE_PMUGRF = 2,
+	ROUTE_TYPE_DEFAULT	= 0,
+	ROUTE_TYPE_TOPGRF	= 1,
+	ROUTE_TYPE_PMUGRF	= 2,
 
-	ROUTE_TYPE_INVALID = -1,
+	ROUTE_TYPE_INVALID	= -1,
 };
 
 /**
@@ -415,32 +409,6 @@ struct rockchip_pin_bank {
 			{ .drv_type = drv2, .offset = offset2 },	\
 			{ .drv_type = drv3, .offset = offset3 },	\
 		},							\
-	}
-
-#define PIN_BANK_IOMUX_DRV_PULL_FLAGS(id, pins, label, iom0, iom1,	\
-				      iom2, iom3, drv0, drv1, drv2,	\
-				      drv3, pull0, pull1, pull2,	\
-				      pull3)				\
-	{								\
-		.bank_num	= id,					\
-		.nr_pins	= pins,					\
-		.name		= label,				\
-		.iomux		= {					\
-			{ .type = iom0, .offset = -1 },			\
-			{ .type = iom1, .offset = -1 },			\
-			{ .type = iom2, .offset = -1 },			\
-			{ .type = iom3, .offset = -1 },			\
-		},							\
-		.drv		= {					\
-			{ .drv_type = drv0, .offset = -1 },		\
-			{ .drv_type = drv1, .offset = -1 },		\
-			{ .drv_type = drv2, .offset = -1 },		\
-			{ .drv_type = drv3, .offset = -1 },		\
-		},							\
-		.pull_type[0] = pull0,					\
-		.pull_type[1] = pull1,					\
-		.pull_type[2] = pull2,					\
-		.pull_type[3] = pull3,					\
 	}
 
 #define PIN_BANK_IOMUX_FLAGS_DRV_FLAGS_OFFSET_PULL_FLAGS(id, pins,	\

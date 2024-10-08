@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2009
  * Graeme Russ, <graeme.russ@gmail.com>
  *
  * (C) Copyright 2002
  * Daniel Engström, Omicron Ceti AB, <daniel@omicron.se>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /*
@@ -14,7 +13,7 @@
  * Programmable Interrupt Controllers.
  */
 
-#include <common.h>
+#include <log.h>
 #include <asm/io.h>
 #include <asm/i8259.h>
 #include <asm/ibmpc.h>

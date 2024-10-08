@@ -1,12 +1,15 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  *  (C) Copyright 2010
  *  NVIDIA Corporation <www.nvidia.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __ASM_ARCH_TEGRA_DC_H
 #define __ASM_ARCH_TEGRA_DC_H
+
+#ifndef __ASSEMBLY__
+#include <linux/bitops.h>
+#endif
 
 /* Register definitions for the Tegra display controller */
 
@@ -439,6 +442,11 @@ enum win_color_depth_id {
 #define WINDOW_C_SELECT		BIT(6)
 #define	WINDOW_D_SELECT		BIT(7)
 #define	WINDOW_H_SELECT		BIT(8)
+
+/* DC_COM_PIN_OUTPUT_POLARITY1 0x307 */
+#define LHS_OUTPUT_POLARITY_LOW		BIT(30)
+#define LVS_OUTPUT_POLARITY_LOW		BIT(28)
+#define LSC0_OUTPUT_POLARITY_LOW	BIT(24)
 
 /* DC_DISP_DISP_WIN_OPTIONS 0x402 */
 #define	CURSOR_ENABLE		BIT(16)

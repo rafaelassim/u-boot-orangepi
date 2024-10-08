@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Take drivers/gpio/gpio-74x164.c as reference.
  *
@@ -5,17 +6,16 @@
  *
  * Copyright (C) 2016 Peng Fan <van.freenix@gmail.com>
  *
- * SPDX-License-Identifier:	GPL-2.0+
- *
  */
 
-#include <common.h>
 #include <errno.h>
 #include <dm.h>
 #include <fdtdec.h>
 #include <malloc.h>
+#include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
+#include <dm/device_compat.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <spi.h>
 
@@ -187,6 +187,6 @@ U_BOOT_DRIVER(74x164) = {
 	.id		= UCLASS_GPIO,
 	.ops		= &gen_74x164_ops,
 	.probe		= gen_74x164_probe,
-	.priv_auto_alloc_size = sizeof(struct gen_74x164_priv),
+	.priv_auto	= sizeof(struct gen_74x164_priv),
 	.of_match	= gen_74x164_ids,
 };

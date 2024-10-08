@@ -1,62 +1,102 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2013 The Chromium OS Authors.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
-#include <initcall.h>
 #include <efi.h>
+#include <initcall.h>
+#include <log.h>
+#include <relocate.h>
+#include <asm/global_data.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#define TICKS_TO_US(ticks)	((ticks) / (COUNTER_FREQUENCY / 1000000))
-#define US_TO_MS(ticks)		((ticks) / 1000)
-#define US_TO_US(ticks)		((ticks) % 1000)
-
-#ifdef DEBUG
-static inline void call_get_ticks(ulong *ticks) { *ticks = get_ticks(); }
-#else
-static inline void call_get_ticks(ulong *ticks) { }
+static ulong calc_reloc_ofs(void)
+{
+#ifdef CONFIG_EFI_APP
+	return (ulong)image_base;
 #endif
+	/*
+	 * Sandbox is relocated by the OS, so symbols always appear at
+	 * the relocated address.
+	 */
+	if (IS_ENABLED(CONFIG_SANDBOX) || (gd->flags & GD_FLG_RELOC))
+		return gd->reloc_off;
 
+	return 0;
+}
+
+/**
+ * initcall_is_event() - Get the event number for an initcall
+ *
+ * func: Function pointer to check
+ * Return: Event number, if this is an event, else 0
+ */
+static int initcall_is_event(init_fnc_t func)
+{
+	ulong val = (ulong)func;
+
+	if ((val & INITCALL_IS_EVENT) == INITCALL_IS_EVENT)
+		return val & INITCALL_EVENT_TYPE;
+
+	return 0;
+}
+
+/*
+ * To enable debugging. add #define DEBUG at the top of the including file.
+ *
+ * To find a symbol, use grep on u-boot.map
+ */
 int initcall_run_list(const init_fnc_t init_sequence[])
 {
-	const init_fnc_t *init_fnc_ptr;
-	ulong start = 0, end = 0, sum = 0;
+	ulong reloc_ofs;
+	const init_fnc_t *ptr;
+	enum event_t type;
+	init_fnc_t func;
+	int ret = 0;
 
-	if (!gd->sys_start_tick)
-		gd->sys_start_tick = get_ticks();
+	for (ptr = init_sequence; func = *ptr, func; ptr++) {
+		reloc_ofs = calc_reloc_ofs();
+		type = initcall_is_event(func);
 
-	for (init_fnc_ptr = init_sequence; *init_fnc_ptr; ++init_fnc_ptr) {
-		unsigned long reloc_ofs = 0;
-		int ret;
-
-		if (gd->flags & GD_FLG_RELOC)
-			reloc_ofs = gd->reloc_off;
-#ifdef CONFIG_EFI_APP
-		reloc_ofs = (unsigned long)image_base;
-#endif
-		debug("initcall: %p", (char *)*init_fnc_ptr - reloc_ofs);
-		if (gd->flags & GD_FLG_RELOC)
-			debug(" (relocated to %p)\n", (char *)*init_fnc_ptr);
-		else
-			debug("\n");
-		call_get_ticks(&start);
-		ret = (*init_fnc_ptr)();
-		call_get_ticks(&end);
-
-		if (start != end) {
-			sum = TICKS_TO_US(end - gd->sys_start_tick);
-			debug("\t\t\t\t\t\t\t\t#%8ld us #%4ld.%3ld ms\n",
-			      TICKS_TO_US(end - start), US_TO_MS(sum), US_TO_US(sum));
+		if (type) {
+			if (!CONFIG_IS_ENABLED(EVENT))
+				continue;
+			debug("initcall: event %d/%s\n", type,
+			      event_type_name(type));
+		} else if (reloc_ofs) {
+			debug("initcall: %p (relocated to %p)\n",
+			      (char *)func - reloc_ofs, (char *)func);
+		} else {
+			debug("initcall: %p\n", (char *)func - reloc_ofs);
 		}
-		if (ret) {
-			printf("initcall sequence %p failed at call %p (err=%d)\n",
-			       init_sequence,
-			       (char *)*init_fnc_ptr - reloc_ofs, ret);
-			return -1;
-		}
+
+		ret = type ? event_notify_null(type) : func();
+		if (ret)
+			break;
 	}
+
+	if (ret) {
+		if (CONFIG_IS_ENABLED(EVENT)) {
+			char buf[60];
+
+			/* don't worry about buf size as we are dying here */
+			if (type) {
+				sprintf(buf, "event %d/%s", type,
+					event_type_name(type));
+			} else {
+				sprintf(buf, "call %p",
+					(char *)func - reloc_ofs);
+			}
+
+			printf("initcall failed at %s (err=%dE)\n", buf, ret);
+		} else {
+			printf("initcall failed at call %p (err=%d)\n",
+			       (char *)func - reloc_ofs, ret);
+		}
+
+		return ret;
+	}
+
 	return 0;
 }

@@ -1,12 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2016 Vladimir Zapolskiy <vz@mleia.com>
  * (C) Copyright 2007 Nobuhiro Iwamatsu <iwamatsu@nigauri.org>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <command.h>
+#include <cpu_func.h>
+#include <stdio.h>
+#include <asm/cache.h>
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/system.h>
@@ -65,6 +66,15 @@ void flush_dcache_range(unsigned long start, unsigned long end)
 	}
 }
 
+/*
+ * Default implementation:
+ * do a range flush for the entire range
+ */
+void flush_dcache_all(void)
+{
+	flush_dcache_range(0, ~0);
+}
+
 void invalidate_dcache_range(unsigned long start, unsigned long end)
 {
 	u32 v;
@@ -89,6 +99,11 @@ void icache_enable(void)
 void icache_disable(void)
 {
 	cache_control(CACHE_DISABLE);
+}
+
+void invalidate_icache_all(void)
+{
+	puts("No arch specific invalidate_icache_all available!\n");
 }
 
 int icache_status(void)

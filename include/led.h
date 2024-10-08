@@ -1,20 +1,52 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright (c) 2015 Google, Inc
  * Written by Simon Glass <sjg@chromium.org>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __LED_H
 #define __LED_H
 
+#include <stdbool.h>
+#include <cyclic.h>
+
+struct udevice;
+
+enum led_state_t {
+	LEDST_OFF = 0,
+	LEDST_ON = 1,
+	LEDST_TOGGLE,
+	LEDST_BLINK,
+
+	LEDST_COUNT,
+};
+
+enum led_sw_blink_state_t {
+	LED_SW_BLINK_ST_DISABLED,
+	LED_SW_BLINK_ST_NOT_READY,
+	LED_SW_BLINK_ST_OFF,
+	LED_SW_BLINK_ST_ON,
+};
+
+struct led_sw_blink {
+	enum led_sw_blink_state_t state;
+	struct udevice *dev;
+	struct cyclic_info cyclic;
+	const char cyclic_name[0];
+};
+
 /**
  * struct led_uc_plat - Platform data the uclass stores about each device
  *
  * @label:	LED label
+ * @default_state:	LED default state
  */
 struct led_uc_plat {
 	const char *label;
+	enum led_state_t default_state;
+#ifdef CONFIG_LED_SW_BLINK
+	struct led_sw_blink *sw_blink;
+#endif
 };
 
 /**
@@ -24,17 +56,6 @@ struct led_uc_plat {
  */
 struct led_uc_priv {
 	int period_ms;
-};
-
-enum led_state_t {
-	LEDST_OFF = 0,
-	LEDST_ON = 1,
-	LEDST_TOGGLE,
-#ifdef CONFIG_LED_BLINK
-	LEDST_BLINK,
-#endif
-
-	LEDST_COUNT,
 };
 
 struct led_ops {
@@ -77,7 +98,7 @@ struct led_ops {
  *
  * @label:	LED label to look up
  * @devp:	Returns the associated device, if found
- * @return 0 if found, -ENODEV if not found, other -ve on error
+ * Return: 0 if found, -ENODEV if not found, other -ve on error
  */
 int led_get_by_label(const char *label, struct udevice **devp);
 
@@ -86,7 +107,7 @@ int led_get_by_label(const char *label, struct udevice **devp);
  *
  * @dev:	LED device to change
  * @state:	LED state to set
- * @return 0 if OK, -ve on error
+ * Return: 0 if OK, -ve on error
  */
 int led_set_state(struct udevice *dev, enum led_state_t state);
 
@@ -94,7 +115,7 @@ int led_set_state(struct udevice *dev, enum led_state_t state);
  * led_get_state() - get the state of an LED
  *
  * @dev:	LED device to change
- * @return LED state led_state_t, or -ve on error
+ * Return: LED state led_state_t, or -ve on error
  */
 enum led_state_t led_get_state(struct udevice *dev);
 
@@ -103,8 +124,21 @@ enum led_state_t led_get_state(struct udevice *dev);
  *
  * @dev:	LED device to change
  * @period_ms:	LED blink period in milliseconds
- * @return 0 if OK, -ve on error
+ * Return: 0 if OK, -ve on error
  */
 int led_set_period(struct udevice *dev, int period_ms);
+
+/**
+ * led_bind_generic() - bind children of parent to given driver
+ *
+ * @parent:      Top-level LED device
+ * @driver_name: Driver for handling individual child nodes
+ */
+int led_bind_generic(struct udevice *parent, const char *driver_name);
+
+/* Internal functions for software blinking. Do not use them in your code */
+int led_sw_set_period(struct udevice *dev, int period_ms);
+bool led_sw_is_blinking(struct udevice *dev);
+bool led_sw_on_state_change(struct udevice *dev, enum led_state_t state);
 
 #endif

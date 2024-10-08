@@ -1,8 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2011
  * egnite GmbH <info@egnite.de>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /*
@@ -32,12 +31,14 @@
  * For additional information visit the project home page at
  * http://www.ethernut.de/
  */
-#include <common.h>
+#include <command.h>
+#include <vsprintf.h>
 #include <asm/arch/at91sam9260.h>
 #include <asm/arch/at91_common.h>
 #include <asm/arch/gpio.h>
 #include <asm/io.h>
 #include <i2c.h>
+#include <linux/delay.h>
 
 #include "ethernut5_pwrman.h"
 
@@ -216,7 +217,7 @@ void ethernut5_print_voltage(void)
 /*
  * Process the board specific 'pwrman' command.
  */
-int do_pwrman(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+int do_pwrman(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	u8 val;
 	int i;

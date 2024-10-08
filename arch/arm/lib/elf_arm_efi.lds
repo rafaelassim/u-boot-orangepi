@@ -1,13 +1,18 @@
+/* SPDX-License-Identifier: BSD-2-Clause */
 /*
  * U-Boot ARM EFI linker script
- *
- * SPDX-License-Identifier:	BSD-2-Clause
  *
  * Modified from elf_arm_efi.lds in gnu-efi
  */
 
 OUTPUT_FORMAT("elf32-littlearm", "elf32-littlearm", "elf32-littlearm")
 OUTPUT_ARCH(arm)
+
+PHDRS
+{
+	data PT_LOAD FLAGS(3); /* PF_W | PF_X */
+}
+
 ENTRY(_start)
 SECTIONS
 {
@@ -20,10 +25,12 @@ SECTIONS
 		*(.srodata)
 		*(.rodata*)
 		. = ALIGN(16);
+		*(.dynamic);
+		. = ALIGN(512);
 	}
 	_etext = .;
 	_text_size = . - _text;
-	.dynamic  : { *(.dynamic) }
+	. = ALIGN(4096);
 	.data : {
 		_data = .;
 		*(.sdata)
@@ -45,26 +52,29 @@ SECTIONS
 		*(.bss)
 		*(.bss.*)
 		*(COMMON)
-		. = ALIGN(16);
+		. = ALIGN(512);
 		_bss_end = .;
 		_edata = .;
-	}
-	.rel.dyn : { *(.rel.dyn) }
-	.rel.plt : { *(.rel.plt) }
-	.rel.got : { *(.rel.got) }
-	.rel.data : { *(.rel.data) *(.rel.data*) }
-	_data_size = . - _etext;
+	} :data
+	_data_size = . - _data;
 
-	. = ALIGN(4096);
-	.dynsym   : { *(.dynsym) }
-	. = ALIGN(4096);
-	.dynstr   : { *(.dynstr) }
-	. = ALIGN(4096);
-	.note.gnu.build-id : { *(.note.gnu.build-id) }
 	/DISCARD/ : {
+		/*
+		 * We don't support relocations. These would have to be
+		 * translated from ELF to PE format and added to the .reloc
+		 * section.
+		 */
+		*(.rel.dyn)
+		*(.rel.plt)
+		*(.rel.got)
+		*(.rel.data)
+		*(.rel.data*)
 		*(.rel.reloc)
 		*(.eh_frame)
 		*(.note.GNU-stack)
+		*(.dynsym)
+		*(.dynstr)
+		*(.note.gnu.build-id)
+		*(.comment)
 	}
-	.comment 0 : { *(.comment) }
 }

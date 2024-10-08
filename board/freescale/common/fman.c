@@ -1,10 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2011-2015 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <linux/libfdt.h>
 #include <linux/libfdt_env.h>
 #include <fdt_support.h>

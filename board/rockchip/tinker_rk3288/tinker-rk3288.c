@@ -1,12 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2016 Rockchip Electronics Co., Ltd
- *
- * SPDX-License-Identifier:     GPL-2.0+
  */
 
-#include <common.h>
 #include <dm.h>
+#include <env.h>
 #include <i2c_eeprom.h>
+#include <init.h>
+#include <net.h>
 #include <netdev.h>
 
 static int get_ethaddr_from_eeprom(u8 *addr)

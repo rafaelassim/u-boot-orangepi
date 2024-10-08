@@ -1,6 +1,8 @@
 #ifndef _SHA256_H
 #define _SHA256_H
 
+#include <linux/types.h>
+
 #define SHA256_SUM_LEN	32
 #define SHA256_DER_LEN	19
 
@@ -21,7 +23,5 @@ void sha256_finish(sha256_context * ctx, uint8_t digest[SHA256_SUM_LEN]);
 
 void sha256_csum_wd(const unsigned char *input, unsigned int ilen,
 		unsigned char *output, unsigned int chunk_sz);
-void sha256_csum(const unsigned char *input, unsigned int ilen,
-		 unsigned char *output);
 
 #endif /* _SHA256_H */

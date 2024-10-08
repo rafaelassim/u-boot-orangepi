@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2015 Hans de Goede <hdegoede@redhat.com>
  *
  * X-Powers AXP Power Management ICs gpio driver
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
-#include <asm/arch/gpio.h>
 #include <asm/arch/pmic_bus.h>
 #include <asm/gpio.h>
 #include <axp_pmic.h>
@@ -16,6 +13,7 @@
 #include <dm/lists.h>
 #include <dm/root.h>
 #include <errno.h>
+#include <sunxi_gpio.h>
 
 static int axp_gpio_set_value(struct udevice *dev, unsigned pin, int val);
 
@@ -38,18 +36,11 @@ static int axp_gpio_direction_input(struct udevice *dev, unsigned pin)
 {
 	u8 reg;
 
-	switch (pin) {
-#ifndef CONFIG_AXP152_POWER /* NA on axp152 */
-	case SUNXI_GPIO_AXP0_VBUS_DETECT:
-		return 0;
-#endif
-	default:
-		reg = axp_get_gpio_ctrl_reg(pin);
-		if (reg == 0)
-			return -EINVAL;
+	reg = axp_get_gpio_ctrl_reg(pin);
+	if (reg == 0)
+		return -EINVAL;
 
-		return pmic_bus_write(reg, AXP_GPIO_CTRL_INPUT);
-	}
+	return pmic_bus_write(reg, AXP_GPIO_CTRL_INPUT);
 }
 
 static int axp_gpio_direction_output(struct udevice *dev, unsigned pin,
@@ -85,12 +76,6 @@ static int axp_gpio_get_value(struct udevice *dev, unsigned pin)
 	int ret;
 
 	switch (pin) {
-#ifndef CONFIG_AXP152_POWER /* NA on axp152 */
-	case SUNXI_GPIO_AXP0_VBUS_DETECT:
-		ret = pmic_bus_read(AXP_POWER_STATUS, &val);
-		mask = AXP_POWER_STATUS_VBUS_PRESENT;
-		break;
-#endif
 #ifdef AXP_MISC_CTRL_N_VBUSEN_FUNC
 	/* Only available on later PMICs */
 	case SUNXI_GPIO_AXP0_VBUS_ENABLE:

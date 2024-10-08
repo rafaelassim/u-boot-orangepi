@@ -28,8 +28,44 @@ config LED_BCM6358
 	  LED HW controller accessed via MMIO registers.
 	  HW has no blinking capabilities and up to 32 LEDs can be controlled.
 
+config LED_BCM6753
+	bool "LED Support for BCM6753"
+	depends on LED && BCM6855
+	help
+	  This option enables support for LEDs connected to the BCM6753
+	  HW has blinking and fading capabilities and up to 32 LEDs can be controlled.
+
+config LED_BCM6858
+	bool "LED Support for BCM6858"
+	depends on LED && (BCM6856 || BCM6858 || BCM63158)
+	help
+	  This option enables support for LEDs connected to the BCM6858
+	  HW has blinking capabilities and up to 32 LEDs can be controlled.
+
+config LED_CORTINA
+	bool "LED Support for Cortina Access CAxxxx SoCs"
+	depends on LED && (CORTINA_PLATFORM)
+	help
+	  This option enables support for LEDs connected to the Cortina
+	  Access CAxxxx SOCs.
+
+config LED_LP5562
+	bool "LED Support for LP5562"
+	depends on LED && DM_I2C
+	help
+	  This option enables support for LEDs connected to the TI LP5562
+	  4 channel I2C LED controller.  Driver fully supports blink on the
+	  B/G/R LEDs.  White LED can blink, but re-uses the period from blue.
+
+config LED_PWM
+	bool "LED PWM"
+	depends on LED && DM_PWM
+	help
+	  Enable support for LEDs connected to PWM.
+	  Linux compatible ofdata.
+
 config LED_BLINK
-	bool "Support LED blinking"
+	bool "Support hardware LED blinking"
 	depends on LED
 	help
 	  Some drivers can support automatic blinking of LEDs with a given
@@ -37,9 +73,23 @@ config LED_BLINK
 	  This option enables support for this which adds slightly to the
 	  code size.
 
+config LED_SW_BLINK
+	bool "Support software LED blinking"
+	depends on LED
+	select CYCLIC
+	help
+	  Turns on led blinking implemented in the software, useful when
+	  the hardware doesn't support led blinking. Half of the period
+	  led will be ON and the rest time it will be OFF. Standard
+	  led commands can be used to configure blinking. Does nothing
+	  if driver supports hardware blinking.
+	  WARNING: Blinking may be inaccurate during execution of time
+	  consuming commands (ex. flash reading). Also it completely
+	  stops during OS booting.
+
 config SPL_LED
 	bool "Enable LED support in SPL"
-	depends on SPL && SPL_DM
+	depends on SPL_DM
 	help
 	  The LED subsystem adds a small amount of overhead to the image.
 	  If this is acceptable and you have a need to use LEDs in SPL,
@@ -57,7 +107,7 @@ config LED_GPIO
 
 config SPL_LED_GPIO
 	bool "LED support for GPIO-connected LEDs in SPL"
-        depends on SPL_LED && DM_GPIO
+        depends on SPL_LED && SPL_DM_GPIO
 	help
 	  This option is an SPL-variant of the LED_GPIO option.
 	  See the help of LED_GPIO for details.

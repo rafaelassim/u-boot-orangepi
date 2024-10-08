@@ -1,16 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (C) 2017 Weidmüller Interface GmbH & Co. KG
  * Stefan Herbrechtsmeier <stefan.herbrechtsmeier@weidmueller.com>
  *
  * Copyright (C) 2013 Soren Brinkmann <soren.brinkmann@xilinx.com>
  * Copyright (C) 2013 Xilinx, Inc. All rights reserved.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <clk-uclass.h>
 #include <dm.h>
+#include <log.h>
+#include <asm/global_data.h>
+#include <dm/device_compat.h>
 #include <dm/lists.h>
 #include <errno.h>
 #include <asm/io.h>
@@ -394,7 +395,7 @@ static ulong zynq_clk_get_rate(struct clk *clk)
 		return zynq_clk_get_peripheral_rate(priv, id, two_divs);
 	case dma_clk:
 		return zynq_clk_get_cpu_rate(priv, cpu_2x_clk);
-	case usb0_aper_clk ... smc_aper_clk:
+	case usb0_aper_clk ... swdt_clk:
 		return zynq_clk_get_cpu_rate(priv, cpu_1x_clk);
 	default:
 		return -ENXIO;
@@ -435,8 +436,66 @@ static ulong zynq_clk_get_rate(struct clk *clk)
 	case lqspi_clk ... pcap_clk:
 	case sdio0_clk ... spi1_clk:
 		return zynq_clk_get_peripheral_rate(priv, id, 0);
+	case i2c0_aper_clk ... i2c1_aper_clk:
+		return zynq_clk_get_cpu_rate(priv, cpu_1x_clk);
 	default:
 		return -ENXIO;
+	}
+}
+#endif
+
+static int dummy_enable(struct clk *clk)
+{
+	/*
+	 * Add implementation but by default all clocks are enabled
+	 * after power up which is only one supported case now.
+	 */
+	return 0;
+}
+
+#if IS_ENABLED(CONFIG_CMD_CLK)
+static const char * const clk_names[clk_max] = {
+	"armpll", "ddrpll", "iopll",
+	"cpu_6or4x", "cpu_3or2x", "cpu_2x", "cpu_1x",
+	"ddr2x", "ddr3x", "dci",
+	"lqspi", "smc", "pcap", "gem0", "gem1",
+	"fclk0", "fclk1", "fclk2", "fclk3", "can0", "can1",
+	"sdio0", "sdio1", "uart0", "uart1", "spi0", "spi1", "dma",
+	"usb0_aper", "usb1_aper", "gem0_aper", "gem1_aper",
+	"sdio0_aper", "sdio1_aper", "spi0_aper", "spi1_aper",
+	"can0_aper", "can1_aper", "i2c0_aper", "i2c1_aper",
+	"uart0_aper", "uart1_aper", "gpio_aper", "lqspi_aper",
+	"smc_aper", "swdt", "dbg_trc", "dbg_apb"
+};
+
+static void zynq_clk_dump(struct udevice *dev)
+{
+	int i, ret;
+
+	printf("clk\t\tfrequency\n");
+	for (i = 0; i < clk_max; i++) {
+		const char *name = clk_names[i];
+
+		if (name) {
+			struct clk clk;
+			unsigned long rate;
+
+			clk.id = i;
+			ret = clk_request(dev, &clk);
+			if (ret < 0) {
+				printf("%s clk_request() failed: %d\n",
+				       __func__, ret);
+				break;
+			}
+
+			rate = clk_get_rate(&clk);
+
+			if ((rate == (unsigned long)-ENOSYS) ||
+			    (rate == (unsigned long)-ENXIO))
+				printf("%10s%20s\n", name, "unknown");
+			else
+				printf("%10s%20lu\n", name, rate);
+		}
 	}
 }
 #endif
@@ -445,6 +504,10 @@ static struct clk_ops zynq_clk_ops = {
 	.get_rate = zynq_clk_get_rate,
 #ifndef CONFIG_SPL_BUILD
 	.set_rate = zynq_clk_set_rate,
+#endif
+	.enable = dummy_enable,
+#if IS_ENABLED(CONFIG_CMD_CLK)
+	.dump = zynq_clk_dump,
 #endif
 };
 
@@ -458,8 +521,9 @@ static int zynq_clk_probe(struct udevice *dev)
 
 	for (i = 0; i < 2; i++) {
 		sprintf(name, "gem%d_emio_clk", i);
-		ret = clk_get_by_name(dev, name, &priv->gem_emio_clk[i]);
-		if (ret < 0 && ret != -ENODATA) {
+		ret = clk_get_by_name_optional(dev, name,
+					       &priv->gem_emio_clk[i]);
+		if (ret) {
 			dev_err(dev, "failed to get %s clock\n", name);
 			return ret;
 		}
@@ -481,8 +545,7 @@ U_BOOT_DRIVER(zynq_clk) = {
 	.name		= "zynq_clk",
 	.id		= UCLASS_CLK,
 	.of_match	= zynq_clk_ids,
-	.flags		= DM_FLAG_PRE_RELOC,
 	.ops		= &zynq_clk_ops,
-	.priv_auto_alloc_size = sizeof(struct zynq_clk_priv),
+	.priv_auto	= sizeof(struct zynq_clk_priv),
 	.probe		= zynq_clk_probe,
 };

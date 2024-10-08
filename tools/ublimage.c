@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2011
  * Heiko Schocher, DENX Software Engineering, hs@denx.de.
@@ -9,8 +10,6 @@
  * (C) Copyright 2008
  * Marvell Semiconductor <www.marvell.com>
  * Written-by: Prafulla Wadaskar <prafulla@marvell.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include "imagetool.h"
@@ -203,7 +202,7 @@ static int ublimage_verify_header(unsigned char *ptr, int image_size,
 	return 0;
 }
 
-static void ublimage_print_header(const void *ptr)
+static void ublimage_print_header(const void *ptr, struct image_tool_params *params)
 {
 	struct ubl_header *ubl_hdr = (struct ubl_header *) ptr;
 

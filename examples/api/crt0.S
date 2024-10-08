@@ -1,9 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * (C) Copyright 2007 Semihalf
  *
  * Written by: Rafal Jaworowski <raj@semihalf.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #if defined(CONFIG_PPC)
@@ -33,6 +32,21 @@ _start:
 	ldr	ip, =search_hint
 	str	sp, [ip]
 	b	main
+
+#elif defined(CONFIG_ARM64)
+
+              .text
+              .globl _start
+_start:
+              ldr           ip0, =search_hint
+              str           sp_el2, [ip0]
+              b             main
+
+
+              .globl syscall
+syscall:
+              ldr           ip0, =syscall_ptr
+              ldr           pc_el2, [ip0]
 
 
 	.globl syscall

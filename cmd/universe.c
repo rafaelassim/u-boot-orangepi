@@ -1,12 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2003 Stefan Roese, stefan.roese@esd-electronics.com
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <command.h>
 #include <malloc.h>
+#include <vsprintf.h>
 #include <asm/io.h>
 #include <pci.h>
 
@@ -14,7 +13,6 @@
 
 #define PCI_VENDOR PCI_VENDOR_ID_TUNDRA
 #define PCI_DEVICE PCI_DEVICE_ID_TUNDRA_CA91C042
-
 
 typedef struct _UNI_DEV UNI_DEV;
 
@@ -26,7 +24,6 @@ struct _UNI_DEV {
 };
 
 static UNI_DEV   *dev;
-
 
 int universe_init(void)
 {
@@ -112,7 +109,6 @@ int universe_init(void)
  break_20:
 	return result;
 }
-
 
 /*
  * Create pci slave window (access: pci -> vme)
@@ -210,7 +206,6 @@ int universe_pci_slave_window(unsigned int pciAddr, unsigned int vmeAddr, int si
 	return -result;
 }
 
-
 /*
  * Create vme slave window (access: vme -> pci)
  */
@@ -295,11 +290,10 @@ int universe_vme_slave_window(unsigned int vmeAddr, unsigned int pciAddr, int si
 	return -result;
 }
 
-
 /*
  * Tundra Universe configuration
  */
-int do_universe(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+int do_universe(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	ulong addr1 = 0, addr2 = 0, size = 0, vam = 0, pms = 0, vdw = 0;
 	char cmd = 'x';
@@ -308,17 +302,17 @@ int do_universe(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 	if (argc > 1)
 		cmd = argv[1][0];
 	if (argc > 2)
-		addr1 = simple_strtoul(argv[2], NULL, 16);
+		addr1 = hextoul(argv[2], NULL);
 	if (argc > 3)
-		addr2 = simple_strtoul(argv[3], NULL, 16);
+		addr2 = hextoul(argv[3], NULL);
 	if (argc > 4)
-		size = simple_strtoul(argv[4], NULL, 16);
+		size = hextoul(argv[4], NULL);
 	if (argc > 5)
-		vam = simple_strtoul(argv[5], NULL, 16);
+		vam = hextoul(argv[5], NULL);
 	if (argc > 6)
-		pms = simple_strtoul(argv[6], NULL, 16);
+		pms = hextoul(argv[6], NULL);
 	if (argc > 7)
-		vdw = simple_strtoul(argv[7], NULL, 16);
+		vdw = hextoul(argv[7], NULL);
 
 	switch (cmd) {
 	case 'i':		/* init */
@@ -342,7 +336,6 @@ int do_universe(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	return 0;
 }
-
 
 U_BOOT_CMD(
 	universe,	8,	1,	do_universe,

@@ -8,10 +8,32 @@
  * Author: Miquèl Raynal <miquel.raynal@bootlin.com>
  */
 
-#include <common.h>
 #include <command.h>
+#include <console.h>
+#if CONFIG_IS_ENABLED(CMD_MTD_OTP)
+#include <hexdump.h>
+#endif
+#include <malloc.h>
 #include <mapmem.h>
 #include <mtd.h>
+#include <dm/devres.h>
+#include <linux/err.h>
+
+#include <linux/ctype.h>
+
+static struct mtd_info *get_mtd_by_name(const char *name)
+{
+	struct mtd_info *mtd;
+
+	mtd_probe_devices();
+
+	mtd = get_mtd_device_nm(name);
+	if (IS_ERR_OR_NULL(mtd))
+		printf("MTD device %s not found, ret %ld\n", name,
+		       PTR_ERR(mtd));
+
+	return mtd;
+}
 
 static uint mtd_len_to_pages(struct mtd_info *mtd, u64 len)
 {
@@ -57,7 +79,7 @@ static void mtd_dump_device_buf(struct mtd_info *mtd, u64 start_off,
 
 	if (has_pages) {
 		for (page = 0; page < npages; page++) {
-			u64 data_off = page * mtd->writesize;
+			u64 data_off = (u64)page * mtd->writesize;
 
 			printf("\nDump %d data bytes from 0x%08llx:\n",
 			       mtd->writesize, start_off + data_off);
@@ -65,7 +87,7 @@ static void mtd_dump_device_buf(struct mtd_info *mtd, u64 start_off,
 				     mtd->writesize, start_off + data_off);
 
 			if (woob) {
-				u64 oob_off = page * mtd->oobsize;
+				u64 oob_off = (u64)page * mtd->oobsize;
 
 				printf("Dump %d OOB bytes from page at 0x%08llx:\n",
 				       mtd->oobsize, start_off + data_off);
@@ -106,6 +128,13 @@ static void mtd_show_device(struct mtd_info *mtd)
 		printf("  - driver: %s\n", mtd->dev->driver->name);
 	}
 #endif
+	if (IS_ENABLED(CONFIG_OF_CONTROL) && mtd->dev) {
+		char buf[256];
+		int res;
+
+		res = ofnode_get_path(mtd_get_ofnode(mtd), buf, 256);
+		printf("  - path: %s\n", res == 0 ? buf : "unavailable");
+	}
 
 	/* MTD device information */
 	printf("  - type: ");
@@ -175,7 +204,223 @@ static bool mtd_oob_write_is_empty(struct mtd_oob_ops *op)
 	return true;
 }
 
-static int do_mtd_list(void)
+#if CONFIG_IS_ENABLED(CMD_MTD_OTP)
+static int do_mtd_otp_read(struct cmd_tbl *cmdtp, int flag, int argc,
+			   char *const argv[])
+{
+	struct mtd_info *mtd;
+	size_t retlen;
+	off_t from;
+	size_t len;
+	bool user;
+	int ret;
+	u8 *buf;
+
+	if (argc != 5)
+		return CMD_RET_USAGE;
+
+	if (!strcmp(argv[2], "u"))
+		user = true;
+	else if (!strcmp(argv[2], "f"))
+		user = false;
+	else
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	from = simple_strtoul(argv[3], NULL, 0);
+	len = simple_strtoul(argv[4], NULL, 0);
+
+	ret = CMD_RET_FAILURE;
+
+	buf = malloc(len);
+	if (!buf)
+		goto put_mtd;
+
+	printf("Reading %s OTP from 0x%lx, %zu bytes\n",
+	       user ? "user" : "factory", from, len);
+
+	if (user)
+		ret = mtd_read_user_prot_reg(mtd, from, len, &retlen, buf);
+	else
+		ret = mtd_read_fact_prot_reg(mtd, from, len, &retlen, buf);
+	if (ret) {
+		free(buf);
+		pr_err("OTP read failed: %d\n", ret);
+		ret = CMD_RET_FAILURE;
+		goto put_mtd;
+	}
+
+	if (retlen != len)
+		pr_err("OTP read returns %zu, but %zu expected\n",
+		       retlen, len);
+
+	print_hex_dump("", 0, 16, 1, buf, retlen, true);
+
+	free(buf);
+
+	ret = CMD_RET_SUCCESS;
+
+put_mtd:
+	put_mtd_device(mtd);
+
+	return ret;
+}
+
+static int do_mtd_otp_lock(struct cmd_tbl *cmdtp, int flag, int argc,
+			   char *const argv[])
+{
+	struct mtd_info *mtd;
+	off_t from;
+	size_t len;
+	int ret;
+
+	if (argc != 4)
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	from = simple_strtoul(argv[2], NULL, 0);
+	len = simple_strtoul(argv[3], NULL, 0);
+
+	ret = mtd_lock_user_prot_reg(mtd, from, len);
+	if (ret) {
+		pr_err("OTP lock failed: %d\n", ret);
+		ret = CMD_RET_FAILURE;
+		goto put_mtd;
+	}
+
+	ret = CMD_RET_SUCCESS;
+
+put_mtd:
+	put_mtd_device(mtd);
+
+	return ret;
+}
+
+static int do_mtd_otp_write(struct cmd_tbl *cmdtp, int flag, int argc,
+			    char *const argv[])
+{
+	struct mtd_info *mtd;
+	size_t retlen;
+	size_t binlen;
+	u8 *binbuf;
+	off_t from;
+	int ret;
+
+	if (argc != 4)
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	from = simple_strtoul(argv[2], NULL, 0);
+	binlen = strlen(argv[3]) / 2;
+
+	ret = CMD_RET_FAILURE;
+	binbuf = malloc(binlen);
+	if (!binbuf)
+		goto put_mtd;
+
+	hex2bin(binbuf, argv[3], binlen);
+
+	printf("Will write:\n");
+
+	print_hex_dump("", 0, 16, 1, binbuf, binlen, true);
+
+	printf("to 0x%lx\n", from);
+
+	printf("Continue (y/n)?\n");
+
+	if (confirm_yesno() != 1) {
+		pr_err("OTP write canceled\n");
+		ret = CMD_RET_SUCCESS;
+		goto put_mtd;
+	}
+
+	ret = mtd_write_user_prot_reg(mtd, from, binlen, &retlen, binbuf);
+	if (ret) {
+		pr_err("OTP write failed: %d\n", ret);
+		ret = CMD_RET_FAILURE;
+		goto put_mtd;
+	}
+
+	if (retlen != binlen)
+		pr_err("OTP write returns %zu, but %zu expected\n",
+		       retlen, binlen);
+
+	ret = CMD_RET_SUCCESS;
+
+put_mtd:
+	free(binbuf);
+	put_mtd_device(mtd);
+
+	return ret;
+}
+
+static int do_mtd_otp_info(struct cmd_tbl *cmdtp, int flag, int argc,
+			   char *const argv[])
+{
+	struct otp_info otp_info;
+	struct mtd_info *mtd;
+	size_t retlen;
+	bool user;
+	int ret;
+
+	if (argc != 3)
+		return CMD_RET_USAGE;
+
+	if (!strcmp(argv[2], "u"))
+		user = true;
+	else if (!strcmp(argv[2], "f"))
+		user = false;
+	else
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	if (user)
+		ret = mtd_get_user_prot_info(mtd, sizeof(otp_info), &retlen,
+					     &otp_info);
+	else
+		ret = mtd_get_fact_prot_info(mtd, sizeof(otp_info), &retlen,
+					     &otp_info);
+	if (ret) {
+		pr_err("OTP info failed: %d\n", ret);
+		ret = CMD_RET_FAILURE;
+		goto put_mtd;
+	}
+
+	if (retlen != sizeof(otp_info)) {
+		pr_err("OTP info returns %zu, but %zu expected\n",
+		       retlen, sizeof(otp_info));
+		ret = CMD_RET_FAILURE;
+		goto put_mtd;
+	}
+
+	printf("%s OTP region info:\n", user ? "User" : "Factory");
+	printf("\tstart: %u\n", otp_info.start);
+	printf("\tlength: %u\n", otp_info.length);
+	printf("\tlocked: %u\n", otp_info.locked);
+
+	ret = CMD_RET_SUCCESS;
+
+put_mtd:
+	put_mtd_device(mtd);
+
+	return ret;
+}
+#endif
+
+static int do_mtd_list(struct cmd_tbl *cmdtp, int flag, int argc,
+		       char *const argv[])
 {
 	struct mtd_info *mtd;
 	int dev_nb = 0;
@@ -219,232 +464,301 @@ static int mtd_special_write_oob(struct mtd_info *mtd, u64 off,
 	return ret;
 }
 
-static int do_mtd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_mtd_io(struct cmd_tbl *cmdtp, int flag, int argc,
+		     char *const argv[])
 {
+	bool dump, read, raw, woob, write_empty_pages, has_pages = false;
+	u64 start_off, off, len, remaining, default_len;
+	struct mtd_oob_ops io_op = {};
+	uint user_addr = 0, npages;
+	const char *cmd = argv[0];
 	struct mtd_info *mtd;
-	const char *cmd;
-	char *mtd_name;
+	u32 oob_len;
+	u8 *buf;
+	int ret;
 
-	/* All MTD commands need at least two arguments */
 	if (argc < 2)
 		return CMD_RET_USAGE;
 
-	/* Parse the command name and its optional suffixes */
-	cmd = argv[1];
-
-	/* List the MTD devices if that is what the user wants */
-	if (strcmp(cmd, "list") == 0)
-		return do_mtd_list();
-
-	/*
-	 * The remaining commands require also at least a device ID.
-	 * Check the selected device is valid. Ensure it is probed.
-	 */
-	if (argc < 3)
-		return CMD_RET_USAGE;
-
-	mtd_name = argv[2];
-	mtd_probe_devices();
-	mtd = get_mtd_device_nm(mtd_name);
-	if (IS_ERR_OR_NULL(mtd)) {
-		printf("MTD device %s not found, ret %ld\n",
-		       mtd_name, PTR_ERR(mtd));
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
 		return CMD_RET_FAILURE;
+
+	if (mtd->type == MTD_NANDFLASH || mtd->type == MTD_MLCNANDFLASH)
+		has_pages = true;
+
+	dump = !strncmp(cmd, "dump", 4);
+	read = dump || !strncmp(cmd, "read", 4);
+	raw = strstr(cmd, ".raw");
+	woob = strstr(cmd, ".oob");
+	write_empty_pages = !has_pages || strstr(cmd, ".dontskipff");
+
+	argc -= 2;
+	argv += 2;
+
+	if (!dump) {
+		if (!argc) {
+			ret = CMD_RET_USAGE;
+			goto out_put_mtd;
+		}
+
+		user_addr = hextoul(argv[0], NULL);
+		argc--;
+		argv++;
 	}
-	put_mtd_device(mtd);
 
-	argc -= 3;
-	argv += 3;
+	start_off = argc > 0 ? hextoul(argv[0], NULL) : 0;
+	if (!mtd_is_aligned_with_min_io_size(mtd, start_off)) {
+		printf("Offset not aligned with a page (0x%x)\n",
+		       mtd->writesize);
+		ret = CMD_RET_FAILURE;
+		goto out_put_mtd;
+	}
 
-	/* Do the parsing */
-	if (!strncmp(cmd, "read", 4) || !strncmp(cmd, "dump", 4) ||
-	    !strncmp(cmd, "write", 5)) {
-		bool has_pages = mtd->type == MTD_NANDFLASH ||
-				 mtd->type == MTD_MLCNANDFLASH;
-		bool dump, read, raw, woob, write_empty_pages;
-		struct mtd_oob_ops io_op = {};
-		uint user_addr = 0, npages;
-		u64 start_off, off, len, remaining, default_len;
-		u32 oob_len;
-		u8 *buf;
-		int ret;
+	default_len = dump ? mtd->writesize : mtd->size;
+	len = argc > 1 ? hextoul(argv[1], NULL) : default_len;
+	if (!mtd_is_aligned_with_min_io_size(mtd, len)) {
+		len = round_up(len, mtd->writesize);
+		printf("Size not on a page boundary (0x%x), rounding to 0x%llx\n",
+		       mtd->writesize, len);
+	}
 
-		dump = !strncmp(cmd, "dump", 4);
-		read = dump || !strncmp(cmd, "read", 4);
-		raw = strstr(cmd, ".raw");
-		woob = strstr(cmd, ".oob");
-		write_empty_pages = !has_pages || strstr(cmd, ".dontskipff");
+	remaining = len;
+	npages = mtd_len_to_pages(mtd, len);
+	oob_len = woob ? npages * mtd->oobsize : 0;
 
-		if (!dump) {
-			if (!argc)
-				return CMD_RET_USAGE;
+	if (dump)
+		buf = kmalloc(len + oob_len, GFP_KERNEL);
+	else
+		buf = map_sysmem(user_addr, 0);
 
-			user_addr = simple_strtoul(argv[0], NULL, 16);
-			argc--;
-			argv++;
-		}
+	if (!buf) {
+		printf("Could not map/allocate the user buffer\n");
+		ret = CMD_RET_FAILURE;
+		goto out_put_mtd;
+	}
 
-		start_off = argc > 0 ? simple_strtoul(argv[0], NULL, 16) : 0;
-		if (!mtd_is_aligned_with_min_io_size(mtd, start_off)) {
-			printf("Offset not aligned with a page (0x%x)\n",
-			       mtd->writesize);
-			return CMD_RET_FAILURE;
-		}
+	if (has_pages)
+		printf("%s %lld byte(s) (%d page(s)) at offset 0x%08llx%s%s%s\n",
+		       read ? "Reading" : "Writing", len, npages, start_off,
+		       raw ? " [raw]" : "", woob ? " [oob]" : "",
+		       !read && write_empty_pages ? " [dontskipff]" : "");
+	else
+		printf("%s %lld byte(s) at offset 0x%08llx\n",
+		       read ? "Reading" : "Writing", len, start_off);
 
-		default_len = dump ? mtd->writesize : mtd->size;
-		len = argc > 1 ? simple_strtoul(argv[1], NULL, 16) :
-				 default_len;
-		if (!mtd_is_aligned_with_min_io_size(mtd, len)) {
-			len = round_up(len, mtd->writesize);
-			printf("Size not on a page boundary (0x%x), rounding to 0x%llx\n",
-			       mtd->writesize, len);
-		}
+	io_op.mode = raw ? MTD_OPS_RAW : MTD_OPS_AUTO_OOB;
+	io_op.len = has_pages ? mtd->writesize : len;
+	io_op.ooblen = woob ? mtd->oobsize : 0;
+	io_op.datbuf = buf;
+	io_op.oobbuf = woob ? &buf[len] : NULL;
 
-		remaining = len;
-		npages = mtd_len_to_pages(mtd, len);
-		oob_len = woob ? npages * mtd->oobsize : 0;
+	/* Search for the first good block after the given offset */
+	off = start_off;
+	while (mtd_block_isbad(mtd, off))
+		off += mtd->erasesize;
 
-		if (dump)
-			buf = kmalloc(len + oob_len, GFP_KERNEL);
-		else
-			buf = map_sysmem(user_addr, 0);
-
-		if (!buf) {
-			printf("Could not map/allocate the user buffer\n");
-			return CMD_RET_FAILURE;
-		}
-
-		if (has_pages)
-			printf("%s %lld byte(s) (%d page(s)) at offset 0x%08llx%s%s%s\n",
-			       read ? "Reading" : "Writing", len, npages, start_off,
-			       raw ? " [raw]" : "", woob ? " [oob]" : "",
-			       !read && write_empty_pages ? " [dontskipff]" : "");
-		else
-			printf("%s %lld byte(s) at offset 0x%08llx\n",
-			       read ? "Reading" : "Writing", len, start_off);
-
-		io_op.mode = raw ? MTD_OPS_RAW : MTD_OPS_AUTO_OOB;
-		io_op.len = has_pages ? mtd->writesize : len;
-		io_op.ooblen = woob ? mtd->oobsize : 0;
-		io_op.datbuf = buf;
-		io_op.oobbuf = woob ? &buf[len] : NULL;
-
-		/* Search for the first good block after the given offset */
-		off = start_off;
-		while (mtd_block_isbad(mtd, off))
+	/* Loop over the pages to do the actual read/write */
+	while (remaining) {
+		/* Skip the block if it is bad */
+		if (mtd_is_aligned_with_block_size(mtd, off) &&
+		    mtd_block_isbad(mtd, off)) {
 			off += mtd->erasesize;
-
-		/* Loop over the pages to do the actual read/write */
-		while (remaining) {
-			/* Skip the block if it is bad */
-			if (mtd_is_aligned_with_block_size(mtd, off) &&
-			    mtd_block_isbad(mtd, off)) {
-				off += mtd->erasesize;
-				continue;
-			}
-
-			if (read)
-				ret = mtd_read_oob(mtd, off, &io_op);
-			else
-				ret = mtd_special_write_oob(mtd, off, &io_op,
-							    write_empty_pages,
-							    woob);
-
-			if (ret) {
-				printf("Failure while %s at offset 0x%llx\n",
-				       read ? "reading" : "writing", off);
-				return CMD_RET_FAILURE;
-			}
-
-			off += io_op.retlen;
-			remaining -= io_op.retlen;
-			io_op.datbuf += io_op.retlen;
-			io_op.oobbuf += io_op.oobretlen;
+			continue;
 		}
 
-		if (!ret && dump)
-			mtd_dump_device_buf(mtd, start_off, buf, len, woob);
-
-		if (dump)
-			kfree(buf);
+		if (read)
+			ret = mtd_read_oob(mtd, off, &io_op);
 		else
-			unmap_sysmem(buf);
+			ret = mtd_special_write_oob(mtd, off, &io_op,
+						    write_empty_pages, woob);
 
 		if (ret) {
-			printf("%s on %s failed with error %d\n",
-			       read ? "Read" : "Write", mtd->name, ret);
-			return CMD_RET_FAILURE;
+			printf("Failure while %s at offset 0x%llx\n",
+			       read ? "reading" : "writing", off);
+			break;
 		}
 
-	} else if (!strcmp(cmd, "erase")) {
-		bool scrub = strstr(cmd, ".dontskipbad");
-		struct erase_info erase_op = {};
-		u64 off, len;
-		int ret;
-
-		off = argc > 0 ? simple_strtoul(argv[0], NULL, 16) : 0;
-		len = argc > 1 ? simple_strtoul(argv[1], NULL, 16) : mtd->size;
-
-		if (!mtd_is_aligned_with_block_size(mtd, off)) {
-			printf("Offset not aligned with a block (0x%x)\n",
-			       mtd->erasesize);
-			return CMD_RET_FAILURE;
-		}
-
-		if (!mtd_is_aligned_with_block_size(mtd, len)) {
-			printf("Size not a multiple of a block (0x%x)\n",
-			       mtd->erasesize);
-			return CMD_RET_FAILURE;
-		}
-
-		printf("Erasing 0x%08llx ... 0x%08llx (%d eraseblock(s))\n",
-		       off, off + len - 1, mtd_div_by_eb(len, mtd));
-
-		erase_op.mtd = mtd;
-		erase_op.addr = off;
-		erase_op.len = len;
-		erase_op.scrub = scrub;
-
-		while (erase_op.len) {
-			ret = mtd_erase(mtd, &erase_op);
-
-			/* Abort if its not a bad block error */
-			if (ret != -EIO)
-				break;
-
-			printf("Skipping bad block at 0x%08llx\n",
-			       erase_op.fail_addr);
-
-			/* Skip bad block and continue behind it */
-			erase_op.len -= erase_op.fail_addr - erase_op.addr;
-			erase_op.len -= mtd->erasesize;
-			erase_op.addr = erase_op.fail_addr + mtd->erasesize;
-		}
-
-		if (ret && ret != -EIO)
-			return CMD_RET_FAILURE;
-	} else if (!strcmp(cmd, "bad")) {
-		loff_t off;
-
-		if (!mtd_can_have_bb(mtd)) {
-			printf("Only NAND-based devices can have bad blocks\n");
-			return CMD_RET_SUCCESS;
-		}
-
-		printf("MTD device %s bad blocks list:\n", mtd->name);
-		for (off = 0; off < mtd->size; off += mtd->erasesize)
-			if (mtd_block_isbad(mtd, off))
-				printf("\t0x%08llx\n", off);
-	} else {
-		return CMD_RET_USAGE;
+		off += io_op.retlen;
+		remaining -= io_op.retlen;
+		io_op.datbuf += io_op.retlen;
+		io_op.oobbuf += io_op.oobretlen;
 	}
+
+	if (!ret && dump)
+		mtd_dump_device_buf(mtd, start_off, buf, len, woob);
+
+	if (dump)
+		kfree(buf);
+	else
+		unmap_sysmem(buf);
+
+	if (ret) {
+		printf("%s on %s failed with error %d\n",
+		       read ? "Read" : "Write", mtd->name, ret);
+		ret = CMD_RET_FAILURE;
+	} else {
+		ret = CMD_RET_SUCCESS;
+	}
+
+out_put_mtd:
+	put_mtd_device(mtd);
+
+	return ret;
+}
+
+static int do_mtd_erase(struct cmd_tbl *cmdtp, int flag, int argc,
+			char *const argv[])
+{
+	struct erase_info erase_op = {};
+	struct mtd_info *mtd;
+	u64 off, len;
+	bool scrub;
+	int ret = 0;
+
+	if (argc < 2)
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	scrub = strstr(argv[0], ".dontskipbad");
+
+	argc -= 2;
+	argv += 2;
+
+	off = argc > 0 ? hextoul(argv[0], NULL) : 0;
+	len = argc > 1 ? hextoul(argv[1], NULL) : mtd->size;
+
+	if (!mtd_is_aligned_with_block_size(mtd, off)) {
+		printf("Offset not aligned with a block (0x%x)\n",
+		       mtd->erasesize);
+		ret = CMD_RET_FAILURE;
+		goto out_put_mtd;
+	}
+
+	if (!mtd_is_aligned_with_block_size(mtd, len)) {
+		printf("Size not a multiple of a block (0x%x)\n",
+		       mtd->erasesize);
+		ret = CMD_RET_FAILURE;
+		goto out_put_mtd;
+	}
+
+	printf("Erasing 0x%08llx ... 0x%08llx (%d eraseblock(s))\n",
+	       off, off + len - 1, mtd_div_by_eb(len, mtd));
+
+	erase_op.mtd = mtd;
+	erase_op.addr = off;
+	erase_op.len = mtd->erasesize;
+
+	while (len) {
+		if (!scrub) {
+			ret = mtd_block_isbad(mtd, erase_op.addr);
+			if (ret < 0) {
+				printf("Failed to get bad block at 0x%08llx\n",
+				       erase_op.addr);
+				ret = CMD_RET_FAILURE;
+				goto out_put_mtd;
+			}
+
+			if (ret > 0) {
+				printf("Skipping bad block at 0x%08llx\n",
+				       erase_op.addr);
+				ret = 0;
+				len -= mtd->erasesize;
+				erase_op.addr += mtd->erasesize;
+				continue;
+			}
+		}
+
+		ret = mtd_erase(mtd, &erase_op);
+		if (ret && ret != -EIO)
+			break;
+
+		len -= mtd->erasesize;
+		erase_op.addr += mtd->erasesize;
+	}
+
+	if (ret && ret != -EIO)
+		ret = CMD_RET_FAILURE;
+	else
+		ret = CMD_RET_SUCCESS;
+
+out_put_mtd:
+	put_mtd_device(mtd);
+
+	return ret;
+}
+
+static int do_mtd_bad(struct cmd_tbl *cmdtp, int flag, int argc,
+		      char *const argv[])
+{
+	struct mtd_info *mtd;
+	loff_t off;
+
+	if (argc < 2)
+		return CMD_RET_USAGE;
+
+	mtd = get_mtd_by_name(argv[1]);
+	if (IS_ERR_OR_NULL(mtd))
+		return CMD_RET_FAILURE;
+
+	if (!mtd_can_have_bb(mtd)) {
+		printf("Only NAND-based devices can have bad blocks\n");
+		goto out_put_mtd;
+	}
+
+	printf("MTD device %s bad blocks list:\n", mtd->name);
+	for (off = 0; off < mtd->size; off += mtd->erasesize) {
+		if (mtd_block_isbad(mtd, off))
+			printf("\t0x%08llx\n", off);
+	}
+
+out_put_mtd:
+	put_mtd_device(mtd);
 
 	return CMD_RET_SUCCESS;
 }
 
-U_BOOT_CMD(
-	mtd, 10, 1, do_mtd,
-	"MTD utils",
+#ifdef CONFIG_AUTO_COMPLETE
+static int mtd_name_complete(int argc, char *const argv[], char last_char,
+			     int maxv, char *cmdv[])
+{
+	int len = 0, n_found = 0;
+	struct mtd_info *mtd;
+
+	argc--;
+	argv++;
+
+	if (argc > 1 ||
+	    (argc == 1 && (last_char == '\0' || isblank(last_char))))
+		return 0;
+
+	if (argc)
+		len = strlen(argv[0]);
+
+	mtd_for_each_device(mtd) {
+		if (argc &&
+		    (len > strlen(mtd->name) ||
+		     strncmp(argv[0], mtd->name, len)))
+			continue;
+
+		if (n_found >= maxv - 2) {
+			cmdv[n_found++] = "...";
+			break;
+		}
+
+		cmdv[n_found++] = mtd->name;
+	}
+
+	cmdv[n_found] = NULL;
+
+	return n_found;
+}
+#endif /* CONFIG_AUTO_COMPLETE */
+
+U_BOOT_LONGHELP(mtd,
 	"- generic operations on memory technology devices\n\n"
 	"mtd list\n"
 	"mtd read[.raw][.oob]                  <name> <addr> [<off> [<size>]]\n"
@@ -454,9 +768,15 @@ U_BOOT_CMD(
 	"\n"
 	"Specific functions:\n"
 	"mtd bad                               <name>\n"
+#if CONFIG_IS_ENABLED(CMD_MTD_OTP)
+	"mtd otpread                           <name> [u|f] <off> <size>\n"
+	"mtd otpwrite                          <name> <off> <hex string>\n"
+	"mtd otplock                           <name> <off> <size>\n"
+	"mtd otpinfo                           <name> [u|f]\n"
+#endif
 	"\n"
 	"With:\n"
-	"\t<name>: NAND partition/chip name\n"
+	"\t<name>: NAND partition/chip name (or corresponding DM device name or OF path)\n"
 	"\t<addr>: user address from/to which data will be retrieved/stored\n"
 	"\t<off>: offset in <name> in bytes (default: start of the part)\n"
 	"\t\t* must be block-aligned for erase\n"
@@ -464,7 +784,28 @@ U_BOOT_CMD(
 	"\t<size>: length of the operation in bytes (default: the entire device)\n"
 	"\t\t* must be a multiple of a block for erase\n"
 	"\t\t* must be a multiple of a page otherwise (special case: default is a page with dump)\n"
+#if CONFIG_IS_ENABLED(CMD_MTD_OTP)
+	"\t<hex string>: hex string without '0x' and spaces. Example: ABCD1234\n"
+	"\t[u|f]: user or factory OTP region\n"
+#endif
 	"\n"
-	"The .dontskipff option forces writing empty pages, don't use it if unsure.\n"
-);
+	"The .dontskipff option forces writing empty pages, don't use it if unsure.\n");
 
+U_BOOT_CMD_WITH_SUBCMDS(mtd, "MTD utils", mtd_help_text,
+#if CONFIG_IS_ENABLED(CMD_MTD_OTP)
+		U_BOOT_SUBCMD_MKENT(otpread, 5, 1, do_mtd_otp_read),
+		U_BOOT_SUBCMD_MKENT(otpwrite, 4, 1, do_mtd_otp_write),
+		U_BOOT_SUBCMD_MKENT(otplock, 4, 1, do_mtd_otp_lock),
+		U_BOOT_SUBCMD_MKENT(otpinfo, 3, 1, do_mtd_otp_info),
+#endif
+		U_BOOT_SUBCMD_MKENT(list, 1, 1, do_mtd_list),
+		U_BOOT_SUBCMD_MKENT_COMPLETE(read, 5, 0, do_mtd_io,
+					     mtd_name_complete),
+		U_BOOT_SUBCMD_MKENT_COMPLETE(write, 5, 0, do_mtd_io,
+					     mtd_name_complete),
+		U_BOOT_SUBCMD_MKENT_COMPLETE(dump, 4, 0, do_mtd_io,
+					     mtd_name_complete),
+		U_BOOT_SUBCMD_MKENT_COMPLETE(erase, 4, 0, do_mtd_erase,
+					     mtd_name_complete),
+		U_BOOT_SUBCMD_MKENT_COMPLETE(bad, 2, 1, do_mtd_bad,
+					     mtd_name_complete));

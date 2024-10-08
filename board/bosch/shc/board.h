@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * board.h
  *
@@ -7,9 +8,7 @@
  * Based on:
  * TI AM335x boards information header
  *
- * Copyright (C) 2011, Texas Instruments, Incorporated - http://www.ti.com/
- *
- * SPDX-License-Identifier:	GPL-2.0+
+ * Copyright (C) 2011, Texas Instruments, Incorporated - https://www.ti.com/
  */
 
 #ifndef _BOARD_H_
@@ -155,7 +154,7 @@ static inline int board_is_series(void)
 #define HDR_FATC_LEN	12
 
 /*
-* SHC parameters held in On-Board I²C EEPROM device.
+* SHC parameters held in On-Board I2C EEPROM device.
 *
 * Header Format
 *

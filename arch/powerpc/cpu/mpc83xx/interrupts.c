@@ -1,16 +1,17 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2000-2002
  * Wolfgang Denk, DENX Software Engineering, wd@denx.de.
  *
  * Copyright 2004 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <command.h>
+#include <irq_func.h>
 #include <mpc83xx.h>
+#include <asm/global_data.h>
 #include <asm/processor.h>
+#include <asm/ptrace.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -31,37 +32,32 @@ void interrupt_init_cpu (unsigned *decrementer_count)
 	immr->sysconf.spcr |= 0x00400000;
 }
 
-
 /*
  * Handle external interrupts
  */
 
-void external_interrupt (struct pt_regs *regs)
+void external_interrupt(struct pt_regs *regs)
 {
 }
-
 
 /*
  * Install and free an interrupt handler.
  */
 
 void
-irq_install_handler (int irq, interrupt_handler_t * handler, void *arg)
+irq_install_handler(int irq, interrupt_handler_t * handler, void *arg)
 {
 }
 
-
-void irq_free_handler (int irq)
+void irq_free_handler(int irq)
 {
 }
-
 
 void timer_interrupt_cpu (struct pt_regs *regs)
 {
 	/* nothing to do here */
 	return;
 }
-
 
 #if defined(CONFIG_CMD_IRQ)
 
@@ -71,8 +67,8 @@ void timer_interrupt_cpu (struct pt_regs *regs)
  * irqinfo - print information about PCI devices
  */
 
-void
-do_irqinfo(cmd_tbl_t *cmdtp, bd_t *bd, int flag, int argc, char * const argv[])
+void do_irqinfo(struct cmd_tbl *cmdtp, struct bd_info *bd, int flag, int argc,
+		char *const argv[])
 {
 }
 

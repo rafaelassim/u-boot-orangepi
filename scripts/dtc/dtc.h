@@ -1,5 +1,5 @@
-#ifndef _DTC_H
-#define _DTC_H
+#ifndef DTC_H
+#define DTC_H
 
 /*
  * (C) Copyright David Gibson <dwg@au1.ibm.com>, IBM Corporation.  2005.
@@ -65,9 +65,9 @@ extern int auto_label_aliases;	/* auto generate labels -> aliases */
 
 typedef uint32_t cell_t;
 
-
 #define streq(a, b)	(strcmp((a), (b)) == 0)
-#define strneq(a, b, n)	(strncmp((a), (b), (n)) == 0)
+#define strstarts(s, prefix)	(strncmp((s), (prefix), strlen(prefix)) == 0)
+#define strprefixeq(a, n, b)	(strlen(b) == (n) && (memcmp(a, b, n) == 0))
 
 #define ALIGN(x, a)	(((x) + (a) - 1) & ~((a) - 1))
 
@@ -90,7 +90,6 @@ struct data {
 	char *val;
 	struct marker *markers;
 };
-
 
 #define empty_data ((struct data){ 0 /* all .members = 0 or NULL */ })
 
@@ -167,6 +166,8 @@ struct node {
 
 	struct label *labels;
 	const struct bus_type *bus;
+
+	bool omit_if_unused, is_referenced;
 };
 
 #define for_each_label_withdel(l0, l) \
@@ -201,9 +202,11 @@ struct property *reverse_properties(struct property *first);
 struct node *build_node(struct property *proplist, struct node *children);
 struct node *build_node_delete(void);
 struct node *name_node(struct node *node, char *name);
+struct node *omit_node_if_unused(struct node *node);
+struct node *reference_node(struct node *node);
 struct node *chain_node(struct node *first, struct node *list);
 struct node *merge_nodes(struct node *old_node, struct node *new_node);
-void add_orphan_node(struct node *old_node, struct node *new_node, char *ref);
+struct node *add_orphan_node(struct node *old_node, struct node *new_node, char *ref);
 
 void add_property(struct node *node, struct property *prop);
 void delete_property_by_name(struct node *node, char *name);
@@ -247,7 +250,6 @@ struct reserve_info *chain_reserve_entry(struct reserve_info *first,
 struct reserve_info *add_reserve_entry(struct reserve_info *list,
 				       struct reserve_info *new);
 
-
 struct dt_info {
 	unsigned int dtsflags;
 	struct reserve_info *reservelist;
@@ -289,4 +291,4 @@ struct dt_info *dt_from_source(const char *f);
 
 struct dt_info *dt_from_fs(const char *dirname);
 
-#endif /* _DTC_H */
+#endif /* DTC_H */

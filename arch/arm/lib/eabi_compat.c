@@ -1,12 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Utility functions needed for (some) EABI conformant tool chains.
  *
  * (C) Copyright 2009 Wolfgang Denk <wd@denx.de>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
+#include <stdio.h>
+#include <linux/stddef.h>
+#include <linux/string.h>
 
 int raise (int signum)
 {

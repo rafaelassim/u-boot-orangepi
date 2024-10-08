@@ -1,18 +1,22 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright (c) 2012 Linutronix GmbH
  * Copyright (c) 2014 sigma star gmbh
  * Author: Richard Weinberger <richard@nod.at>
  *
- * SPDX-License-Identifier:	GPL-2.0+
- *
  */
 
 #ifndef __UBOOT__
+#include <log.h>
+#include <dm/devres.h>
 #include <linux/crc32.h>
+#include <linux/err.h>
+#include <u-boot/crc.h>
 #else
 #include <div64.h>
 #include <malloc.h>
 #include <ubi_uboot.h>
+#include <linux/bug.h>
 #endif
 
 #include <linux/compat.h>
@@ -100,7 +104,6 @@ size_t ubi_calc_fm_size(struct ubi_device *ubi)
 		sizeof(struct ubi_fm_volhdr) * UBI_MAX_VOLUMES;
 	return roundup(size, ubi->leb_size);
 }
-
 
 /**
  * new_fm_vhdr - allocate a new volume header for fastmap usage.
@@ -676,7 +679,6 @@ static int ubi_attach_fastmap(struct ubi_device *ubi,
 		goto fail_bad;
 	}
 
-
 	if (fm->max_pool_size > UBI_FM_MAX_POOL_SIZE ||
 	    fm->max_pool_size < 0) {
 		ubi_err(ubi, "bad maximal pool size: %i", fm->max_pool_size);
@@ -1236,7 +1238,6 @@ static int ubi_write_fastmap(struct ubi_device *ubi,
 		ubi_assert(fm_pos <= ubi->fm_size);
 	}
 	fmh->scrub_peb_count = cpu_to_be32(scrub_peb_count);
-
 
 	list_for_each_entry(ubi_wrk, &ubi->works, list) {
 		if (ubi_is_erase_work(ubi_wrk)) {

@@ -1,8 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2014
  * Andreas Bießmann <andreas@biessmann.org>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #include "imagetool.h"
@@ -183,7 +182,7 @@ static void atmel_print_pmecc_header(const uint32_t word)
 	printf("\t\t====================\n");
 }
 
-static void atmel_print_header(const void *ptr)
+static void atmel_print_header(const void *ptr, struct image_tool_params *params)
 {
 	uint32_t *ints = (uint32_t *)ptr;
 	size_t pos;

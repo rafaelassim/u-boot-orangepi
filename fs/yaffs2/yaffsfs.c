@@ -17,6 +17,7 @@
 #include "yaffscfg.h"
 #include "yportenv.h"
 #include "yaffs_trace.h"
+#include <dm/devres.h>
 
 #define YAFFSFS_MAX_SYMLINK_DEREFERENCES 5
 
@@ -80,7 +81,6 @@ struct yaffsfs_Handle {
 	short int fdId;
 	short int useCount;
 };
-
 
 struct yaffsfs_DirSearchContxt {
 	struct yaffs_dirent de;	/* directory entry */
@@ -467,7 +467,7 @@ static int yaffsfs_alt_dir_path(const YCHAR *path, YCHAR **ret_path)
 	return 0;
 }
 
-LIST_HEAD(yaffsfs_deviceList);
+static LIST_HEAD(yaffsfs_deviceList);
 
 /*
  * yaffsfs_FindDevice
@@ -2847,12 +2847,9 @@ static void yaffsfs_RemoveObjectCallback(struct yaffs_obj *obj)
 	 * the next one to prevent a hanging ptr.
 	 */
 	list_for_each(i, &search_contexts) {
-		if (i) {
-			dsc = list_entry(i, struct yaffsfs_DirSearchContxt,
-					 others);
-			if (dsc->nextReturn == obj)
-				yaffsfs_DirAdvance(dsc);
-		}
+		dsc = list_entry(i, struct yaffsfs_DirSearchContxt, others);
+		if (dsc->nextReturn == obj)
+			yaffsfs_DirAdvance(dsc);
 	}
 
 }

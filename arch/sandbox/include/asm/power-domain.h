@@ -1,13 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (c) 2016, NVIDIA CORPORATION.
- *
- * SPDX-License-Identifier: GPL-2.0
  */
 
 #ifndef __SANDBOX_POWER_DOMAIN_H
 #define __SANDBOX_POWER_DOMAIN_H
-
-#include <common.h>
 
 struct udevice;
 

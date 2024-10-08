@@ -1,7 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * (C) Copyright 2007 Stanislav Galabov <sgalabov@gmail.com>
- *
- * SPDX-License-Identifier:	GPL-2.0+
  *
  * This file contains routines that fetch data from bd_info sources
  */
@@ -10,7 +9,6 @@
 #include <linux/types.h>
 #include <api_public.h>
 
-#include <asm/u-boot.h>
 #include <asm/global_data.h>
 
 #include "api_private.h"
@@ -25,8 +23,7 @@ DECLARE_GLOBAL_DATA_PTR;
 int platform_sys_info(struct sys_info *si)
 {
 
-	platform_set_mr(si, gd->bd->bi_memstart,
-			gd->bd->bi_memsize, MR_ATTR_DRAM);
+	platform_set_mr(si, gd->ram_base, gd->ram_size, MR_ATTR_DRAM);
 
 	return 1;
 }

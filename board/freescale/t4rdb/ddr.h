@@ -1,7 +1,6 @@
+/* SPDX-License-Identifier: GPL-2.0+ */
 /*
  * Copyright 2014 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
 #ifndef __DDR_H__
@@ -73,6 +72,5 @@ static const struct board_specific_parameters *udimms[] = {
 static const struct board_specific_parameters *rdimms[] = {
 	rdimm0,
 };
-
 
 #endif

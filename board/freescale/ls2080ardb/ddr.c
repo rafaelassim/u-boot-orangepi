@@ -1,14 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Copyright 2015 Freescale Semiconductor, Inc.
- *
- * SPDX-License-Identifier:	GPL-2.0+
  */
 
-#include <common.h>
 #include <fsl_ddr_sdram.h>
 #include <fsl_ddr_dimm_params.h>
+#include <log.h>
 #include <asm/arch/soc.h>
 #include <asm/arch/clock.h>
+#include <asm/global_data.h>
 #include "ddr.h"
 
 DECLARE_GLOBAL_DATA_PTR;
@@ -45,7 +45,6 @@ void fsl_ddr_board_options(memctl_options_t *popts,
 		pbsp = rdimms[ctrl_num];
 	else
 		pbsp = udimms[ctrl_num];
-
 
 	/* Get clk_adjust, wrlvl_start, wrlvl_ctl, according to the board ddr
 	 * freqency and n_banks specified in board_specific_parameters table.
@@ -85,6 +84,8 @@ found:
 		pbsp->wrlvl_ctl_3);
 #ifdef CONFIG_SYS_FSL_HAS_DP_DDR
 	if (ctrl_num == CONFIG_DP_DDR_CTRL) {
+		if (popts->registered_dimm_en)
+			printf("WARN: RDIMM not supported.\n");
 		/* force DDR bus width to 32 bits */
 		popts->data_bus_width = 1;
 		popts->otf_burst_chop_en = 0;
@@ -159,6 +160,17 @@ found:
 	}
 }
 
+#ifdef CONFIG_TFABOOT
+int fsl_initdram(void)
+{
+	gd->ram_size = tfa_get_dram_size();
+
+	if (!gd->ram_size)
+		gd->ram_size = fsl_ddr_sdram_size();
+
+	return 0;
+}
+#else
 int fsl_initdram(void)
 {
 #if defined(CONFIG_SPL) && !defined(CONFIG_SPL_BUILD)
@@ -171,3 +183,4 @@ int fsl_initdram(void)
 
 	return 0;
 }
+#endif /* CONFIG_TFABOOT */
